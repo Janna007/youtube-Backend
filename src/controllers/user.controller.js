@@ -4,6 +4,7 @@ import {User} from '../models/user.model.js'
 import {uploadOnCloudinary} from '../utils/cloudinary.js'
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from 'jsonwebtoken'
+import mongoose from 'mongoose';
 
 
 const generateAccessAndRefreshTokens=async (userId)=>{
@@ -241,12 +242,13 @@ const getCurrentUser=asyncHandler(async (req,res)=>{
 
 const updateAccountDetails=asyncHandler(async (req,res)=>{
     const {fullname,email}=req.body
+   
 
     if(!fullname || !email){
         throw new ApiError(400,"All fields are required")
     }
 
-    const user=   User.findByIdAndUpdate (req.user?._id,
+    const user= await User.findByIdAndUpdate (req.user?._id,
         {
             $set:
             {
@@ -256,6 +258,7 @@ const updateAccountDetails=asyncHandler(async (req,res)=>{
         },
         {new:true}
     ).select("-password")
+   
      
 
      return res
@@ -336,6 +339,7 @@ const updateUserCoverImage=asyncHandler(async (req,res)=>{
 
 const getCurrentUserProfile=asyncHandler(async (req,res)=>{
     const {username} =req.params
+    
 
     if(!username?.trim()){
         throw new  ApiError(400,"Invalid request")
@@ -406,7 +410,66 @@ const getCurrentUserProfile=asyncHandler(async (req,res)=>{
     )
 })
 
+const getWatchHistory=asyncHandler(async (req,res)=>{
+     const user= await User.aggregate([
+        {
+             $match:{
+                _id:new mongoose.Types.ObjectId(req.user._id)
+             }
+        },
+        {
+            $lookup:{
+                from:"videos",
+                localField:"watchHistory",
+                foreignField:"_id",
+                as:"watchHistory",
+                pipeline:[
+                    {
+                        $lookup:{
+                            from:"users",
+                            localField:"owner",
+                            foreignField:"_id",
+                            as:"owner",
+                            pipeline:[
+                                {
+                                    $project:{
+                                        fullname:1,
+                                        username:1,
+                                        avatar:1
+                                    }
+                                }
+                            ]
 
+                        }
+
+                    },
+                    {
+                        $addFields:{
+                            owner:{
+                                $first:"$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+      ])
+
+      if(!user){
+        throw new ApiError(401,"No user")
+      }
+      console.log(user)
+
+      return res
+      .status(200)
+      .json(
+        new ApiResponse(
+            200,
+            user[0].watchHistory,
+            "Fetched watch history successfully"
+            )
+      )
+})
 
 export {
     registerUser,
@@ -418,5 +481,6 @@ export {
     updateAccountDetails,
     updateUserAvatar,
     updateUserCoverImage,
-    getCurrentUserProfile
+    getCurrentUserProfile,
+    getWatchHistory
 }
