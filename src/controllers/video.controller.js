@@ -148,6 +148,73 @@ const getAllVideos = asyncHandler(async (req, res) => {
     //TODO: get all videos based on query, sort, pagination
 
     
+    if (page < 1 && limit > 10) {
+        throw new apiError(400, "Invalid page number or limit")
+    }
+
+    if (!query && !query?.trim()) {
+        throw new apiError(400, "Specify query");
+    }
+
+    if (!isValidObjectId(userId)) {
+        throw new apiError(400, "Invalid UserId.")
+    }
+
+    // find the user from DB
+    const user = await User.findById(userId);
+
+    if (!user) {
+        throw new apiError(404, "User not found");
+    }
+
+    // defining search criteria
+    const searchCriteria = {};
+    if (sortBy && sortType) {
+        searchCriteria[sortBy] = sortType === "asc" ? 1 : -1;   //assigning the search criteria
+    } else {
+        searchCriteria["createdAt"] = -1; 
+    }
+
+    // defining options for aggregate paginate 
+    const options = {
+        page : parseInt(page, 10),
+        limit : parseInt(limit, 10),
+        sort: searchCriteria
+    };
+
+    // defining the pipeline
+    const videosAggregation = Video.aggregate([
+        {
+            $match: {
+                owner: new mongoose.Types.ObjectId(user)
+            }
+        },
+        {
+            $match: {
+                title: {    // match title of the video with the query using $regex
+                    $regex: query    
+                }
+            }
+        },   
+    ]);
+
+    // using aggregate paginate
+    const videos = await Video.aggregatePaginate(
+        videosAggregation,
+        options,
+    );
+
+    if (videos.totalDocs === 0) {   // totalDocs is available as we are using aggregate paginate
+        throw new apiError(400, "No videos matched the searched query.")
+    }
+
+    // returning response
+    return res
+    .status(200)
+    .json(new apiResponse(200, videos, "videos fetched successfully."))
+ 
+
+    
 })
 
 
